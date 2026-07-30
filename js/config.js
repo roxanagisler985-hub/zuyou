@@ -24,7 +24,7 @@ const SILICONFLOW_CONFIG = {
   API_KEY: '',                  // 代理模式不需要 Key
 
   // === 模式二：Cloudflare Workers 代理（USE_PROXY: true 时生效） ===
-  PROXY_URL: 'https://zuyou-ai-proxy.roxanagisler985.workers.dev',
+  PROXY_URL: 'https://zuyou-proxy.roxanagisler985.workers.dev',
 
   // === 通用配置 ===
   MODEL: 'Qwen/Qwen2.5-7B-Instruct',
