@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>我的收藏 - 宿友</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="page-header">
+  <button class="back-btn" onclick="goBack()">←</button>
+  <span style="font-size:16px; font-weight:600;">❤️ 我的收藏</span>
+</div>
+
+<div class="content">
+  <div id="favoritesList"></div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-item" data-page="index" onclick="goTo('index.html')">
+    <span class="icon">🏠</span> 首页
+  </button>
+  <button class="tab-item" data-page="ai-parse" onclick="goTo('ai-parse.html')">
+    <span class="icon">🔍</span> 分析
+  </button>
+  <button class="tab-item" data-page="roommate" onclick="goTo('roommate.html')">
+    <span class="icon">👥</span> 室友
+  </button>
+  <button class="tab-item active" data-page="favorites" onclick="goTo('favorites.html')">
+    <span class="icon">❤️</span> 收藏
+  </button>
+</div>
+
+<script src="js/utils.js"></script>
+<script src="js/data.js"></script>
+<script src="data/houses.json" id="housesData"></script>
+<script>
+let HOUSES_DATA = [];
+
+fetch('data/houses.json')
+  .then(r => r.json())
+  .then(data => {
+    HOUSES_DATA = data;
+    renderFavorites();
+  });
+
+function renderFavorites() {
+  const favIds = getFavorites();
+  const el = document.getElementById('favoritesList');
+
+  if (favIds.length === 0) {
+    el.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">💝</div>
+        <div style="font-size:16px; font-weight:600; margin-bottom:4px;">还没有收藏的房源</div>
+        <div style="font-size:13px; color:var(--text-light);">去首页浏览，把感兴趣的房源收藏起来吧</div>
+        <div style="margin-top:16px;">
+          <button class="btn btn-primary" style="width:auto; padding:10px 32px;" onclick="goTo('index.html')">去首页</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const houses = HOUSES_DATA.filter(h => favIds.includes(h.id));
+
+  el.innerHTML = houses.map(h => `
+    <div class="house-card" onclick="goTo('detail.html?id=${h.id}')">
+      <div style="display:flex; justify-content:space-between; align-items:start;">
+        <div class="house-title">${h.title}</div>
+        <button class="fav-btn active"
+          onclick="event.stopPropagation(); removeFav('${h.id}', this.closest('.house-card'))">
+          ❤️
+        </button>
+      </div>
+      <div class="house-meta">${h.location} · ${h.roomType} · ${h.area}m²</div>
+      <div class="house-tags">
+        ${h.tags.map(t => `<span class="house-tag">${t}</span>`).join('')}
+      </div>
+      <div class="house-price">${formatPrice(h.price)}<span class="unit"> /月</span></div>
+    </div>
+  `).join('');
+}
+
+function removeFav(id, cardEl) {
+  toggleFavorite(id);
+  cardEl.remove();
+  showToast('已取消收藏');
+  // 如果收藏夹空了，重新渲染
+  if (getFavorites().length === 0) {
+    renderFavorites();
+  }
+}
+</script>
+</body>
+</html>
