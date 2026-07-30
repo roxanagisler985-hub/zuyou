@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>宿友 - AI租房助手</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="header">
+  <h1>🏠 宿友</h1>
+  <p>AI帮你过滤套路，你只负责住得舒服</p>
+</div>
+
+<div class="content">
+  <!-- 快捷入口 -->
+  <div class="quick-actions">
+    <div class="quick-btn" onclick="goTo('ai-parse.html')">
+      <span class="icon">🔍</span>
+      <span class="label">AI房源分析</span>
+    </div>
+    <div class="quick-btn" onclick="goTo('recommend.html')">
+      <span class="icon">🎯</span>
+      <span class="label">房源推荐</span>
+    </div>
+    <div class="quick-btn" onclick="goTo('roommate.html')">
+      <span class="icon">👥</span>
+      <span class="label">找室友</span>
+    </div>
+  </div>
+
+  <!-- AI解析快捷入口 -->
+  <div class="card" style="text-align:center; cursor:pointer;" onclick="goTo('ai-parse.html')">
+    <div style="font-size:32px; margin-bottom:8px;">🤖</div>
+    <div style="font-size:14px; font-weight:600; margin-bottom:4px;">粘贴房源链接，AI帮你避坑</div>
+    <div style="font-size:12px; color:var(--text-secondary);">识别中介话术 · 检测虚假描述 · 排查合同陷阱</div>
+    <div style="margin-top:10px;">
+      <span style="display:inline-block; padding:6px 20px; background:var(--primary); color:white; border-radius:20px; font-size:13px;">立即分析</span>
+    </div>
+  </div>
+
+  <!-- 房源列表标题 -->
+  <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px 4px;">
+    <span style="font-size:16px; font-weight:600;">🏘️ 推荐房源</span>
+    <span style="font-size:12px; color:var(--text-secondary);">AI智能排序</span>
+  </div>
+
+  <!-- 筛选条件快捷标签 -->
+  <div style="display:flex; gap:8px; padding:8px 16px; overflow-x:auto; white-space:nowrap;">
+    <span class="house-tag" style="cursor:pointer;" onclick="filterByPrice(3000)">3000以下</span>
+    <span class="house-tag" style="cursor:pointer;" onclick="filterByPrice(1500)">1500以下</span>
+    <span class="house-tag" style="cursor:pointer;" onclick="filterByTag('近地铁')">近地铁</span>
+    <span class="house-tag" style="cursor:pointer;" onclick="filterByTag('合租')">合租</span>
+    <span class="house-tag" style="cursor:pointer;" onclick="filterByTag('个人房东')">个人房东</span>
+    <span class="house-tag" style="cursor:pointer;" onclick="resetFilter()">全部</span>
+  </div>
+
+  <!-- 房源列表 -->
+  <div id="houseList"></div>
+</div>
+
+<!-- 底部Tab -->
+<div class="tab-bar">
+  <button class="tab-item active" data-page="index" onclick="goTo('index.html')">
+    <span class="icon">🏠</span> 首页
+  </button>
+  <button class="tab-item" data-page="ai-parse" onclick="goTo('ai-parse.html')">
+    <span class="icon">🔍</span> 分析
+  </button>
+  <button class="tab-item" data-page="roommate" onclick="goTo('roommate.html')">
+    <span class="icon">👥</span> 室友
+  </button>
+  <button class="tab-item" data-page="favorites" onclick="goTo('favorites.html')">
+    <span class="icon">❤️</span> 收藏
+  </button>
+</div>
+
+<script src="js/utils.js"></script>
+<script src="data/houses.json" id="housesData"></script>
+<script>
+// 加载房源数据
+let HOUSES_DATA = [];
+let currentFilter = null;
+
+fetch('data/houses.json')
+  .then(r => r.json())
+  .then(data => {
+    HOUSES_DATA = data;
+    renderHouses(data);
+  });
+
+function renderHouses(houses) {
+  const el = document.getElementById('houseList');
+  if (!houses || houses.length === 0) {
+    el.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">📭</div>
+        <div>暂无匹配房源</div>
+      </div>`;
+    return;
+  }
+  el.innerHTML = houses.map(h => `
+    <div class="house-card" onclick="goTo('detail.html?id=${h.id}')">
+      <div style="display:flex; justify-content:space-between; align-items:start;">
+        <div class="house-title">${h.title}</div>
+        <button class="fav-btn ${isFavorited(h.id) ? 'active' : 'inactive'}"
+          onclick="event.stopPropagation(); toggleFav('${h.id}', this)">
+          ${isFavorited(h.id) ? '❤️' : '🤍'}
+        </button>
+      </div>
+      <div class="house-meta">${h.location} · ${h.roomType} · ${h.area}m²</div>
+      <div class="house-tags">
+        ${h.tags.map(t => `<span class="house-tag">${t}</span>`).join('')}
+        ${h.landlord.includes('个人') ? '<span class="house-tag" style="background:#F0FDF4;color:#166534;">个人房东</span>' : ''}
+        ${h.landlord.includes('中介') ? '<span class="house-tag warning">中介</span>' : ''}
+      </div>
+      <div class="house-price">${formatPrice(h.price)}<span class="unit"> /月</span></div>
+      <div class="house-footer">
+        <span>${h.landlord}</span>
+        <span>⭐ ${h.rating}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleFav(id, btn) {
+  const added = toggleFavorite(id);
+  btn.className = 'fav-btn ' + (added ? 'active' : 'inactive');
+  btn.textContent = added ? '❤️' : '🤍';
+  showToast(added ? '已收藏' : '已取消收藏');
+}
+
+function filterByPrice(maxPrice) {
+  const filtered = HOUSES_DATA.filter(h => h.price <= maxPrice);
+  currentFilter = `价格${maxPrice}以下`;
+  renderHouses(filtered);
+  showToast(`筛选：${currentFilter}`);
+}
+
+function filterByTag(tag) {
+  const filtered = HOUSES_DATA.filter(h => h.tags.includes(tag) || h.landlord.includes(tag));
+  currentFilter = tag;
+  renderHouses(filtered);
+  showToast(`筛选：${tag}`);
+}
+
+function resetFilter() {
+  currentFilter = null;
+  renderHouses(HOUSES_DATA);
+  showToast('显示全部房源');
+}
+
+window.toggleFav = toggleFav;
+window.filterByPrice = filterByPrice;
+window.filterByTag = filterByTag;
+window.resetFilter = resetFilter;
+</script>
+</body>
+</html>
