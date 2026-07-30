@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>房源推荐 - 宿友</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="page-header">
+  <button class="back-btn" onclick="goBack()">←</button>
+  <span style="font-size:16px; font-weight:600;">🎯 AI智能推荐</span>
+</div>
+
+<div class="content">
+  <!-- 筛选表单 -->
+  <div class="card">
+    <div class="card-title">📋 告诉我你的需求</div>
+
+    <div class="form-group">
+      <label class="form-label">预算范围（元/月）</label>
+      <div style="display:flex; gap:8px;">
+        <input type="number" class="form-input" id="minPrice" placeholder="最低" style="width:50%;">
+        <input type="number" class="form-input" id="maxPrice" placeholder="最高" style="width:50%;">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">期望位置</label>
+      <input type="text" class="form-input" id="location" placeholder="例如：天河区、大学城、体育西...">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">房型</label>
+      <select class="form-select" id="roomType">
+        <option value="all">不限</option>
+        <option value="单间">单间</option>
+        <option value="合租">合租</option>
+        <option value="整租">整租</option>
+        <option value="床位">床位</option>
+      </select>
+    </div>
+
+    <div style="display:flex; gap:12px; margin-bottom:12px;">
+      <label style="display:flex; align-items:center; gap:4px; font-size:13px;">
+        <input type="checkbox" id="nearSubway"> 近地铁
+      </label>
+      <label style="display:flex; align-items:center; gap:4px; font-size:13px;">
+        <input type="checkbox" id="noAgent"> 个人房东优先
+      </label>
+    </div>
+
+    <button class="btn btn-primary" onclick="startRecommend()">🎯 开始推荐</button>
+  </div>
+
+  <!-- 加载 -->
+  <div id="loading" class="loading" style="display:none;">
+    <div class="spinner"></div>
+    <div>AI正在智能匹配最适合你的房源...</div>
+  </div>
+
+  <!-- 推荐结果 -->
+  <div id="resultArea" style="display:none;">
+    <div style="padding:8px 16px;">
+      <span style="font-size:15px; font-weight:600;">🏘️ AI为你推荐</span>
+      <span style="font-size:12px; color:var(--text-secondary); margin-left:8px;" id="resultCount"></span>
+    </div>
+    <div id="resultList"></div>
+  </div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-item" data-page="index" onclick="goTo('index.html')">
+    <span class="icon">🏠</span> 首页
+  </button>
+  <button class="tab-item" data-page="ai-parse" onclick="goTo('ai-parse.html')">
+    <span class="icon">🔍</span> 分析
+  </button>
+  <button class="tab-item" data-page="roommate" onclick="goTo('roommate.html')">
+    <span class="icon">👥</span> 室友
+  </button>
+  <button class="tab-item" data-page="favorites" onclick="goTo('favorites.html')">
+    <span class="icon">❤️</span> 收藏
+  </button>
+</div>
+
+<script src="js/utils.js"></script>
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="data/houses.json" id="housesData"></script>
+<script>
+let HOUSES_DATA = [];
+fetch('data/houses.json').then(r => r.json()).then(d => { HOUSES_DATA = d; });
+
+function startRecommend() {
+  const prefs = {
+    minPrice: parseInt(document.getElementById('minPrice').value) || 0,
+    maxPrice: parseInt(document.getElementById('maxPrice').value) || 99999,
+    location: document.getElementById('location').value.trim(),
+    roomType: document.getElementById('roomType').value,
+    nearSubway: document.getElementById('nearSubway').checked,
+    noAgent: document.getElementById('noAgent').checked
+  };
+
+  if (!prefs.maxPrice && !prefs.location) {
+    showToast('请至少填写预算或位置之一');
+    return;
+  }
+
+  document.getElementById('loading').style.display = 'flex';
+  document.getElementById('resultArea').style.display = 'none';
+
+  recommendHouses(prefs).then(res => {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('resultArea').style.display = 'block';
+    document.getElementById('resultCount').textContent = `共${res.total}套匹配`;
+
+    const list = document.getElementById('resultList');
+    if (res.results.length === 0) {
+      list.innerHTML = `<div class="empty-state"><div class="icon">📭</div><div>没有找到匹配的房源，试试放宽筛选条件</div></div>`;
+      return;
+    }
+
+    list.innerHTML = res.results.map(h => `
+      <div class="house-card" onclick="goTo('detail.html?id=${h.id}')">
+        <div style="display:flex; justify-content:space-between; align-items:start;">
+          <div class="house-title">${h.title}</div>
+          <button class="fav-btn ${isFavorited(h.id) ? 'active' : 'inactive'}"
+            onclick="event.stopPropagation(); toggleFav('${h.id}', this)">
+            ${isFavorited(h.id) ? '❤️' : '🤍'}
+          </button>
+        </div>
+        <div class="reason-badge">🎯 ${h.reason}</div>
+        <div class="house-meta">${h.location} · ${h.roomType} · ${h.area}m²</div>
+        <div class="house-tags">
+          ${h.tags.map(t => `<span class="house-tag">${t}</span>`).join('')}
+          <span class="house-tag" style="background:${h.aiScore >= 75 ? '#F0FDF4;color:#166534;' : h.aiScore >= 50 ? '#FFFBEB;color:#92400E;' : '#FEF2F2;color:#991B1B;'}">
+            AI评分 ${h.aiScore}
+          </span>
+        </div>
+        <div class="house-price">${formatPrice(h.price)}<span class="unit"> /月</span></div>
+      </div>
+    `).join('');
+  });
+}
+
+function toggleFav(id, btn) {
+  const added = toggleFavorite(id);
+  btn.className = 'fav-btn ' + (added ? 'active' : 'inactive');
+  btn.textContent = added ? '❤️' : '🤍';
+  showToast(added ? '已收藏' : '已取消收藏');
+}
+</script>
+</body>
+</html>
