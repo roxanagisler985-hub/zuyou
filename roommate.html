@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>找室友 - 宿友</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="page-header">
+  <button class="back-btn" onclick="goBack()">←</button>
+  <span style="font-size:16px; font-weight:600;">👥 找室友</span>
+</div>
+
+<div class="content">
+  <!-- 问卷填写区 -->
+  <div id="questionArea">
+    <div class="card">
+      <div class="card-title">📝 先填一下你的生活习惯</div>
+      <p style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">
+        回答几个简单问题，AI帮你匹配合适的室友
+      </p>
+    </div>
+
+    <div class="card" style="padding-bottom:4px;" id="questionsContainer">
+      <!-- 动态生成的问卷 -->
+    </div>
+
+    <div style="padding:0 16px 12px;">
+      <button class="btn btn-primary" onclick="submitQuestionnaire()">👥 开始匹配</button>
+    </div>
+  </div>
+
+  <!-- 加载 -->
+  <div id="loading" class="loading" style="display:none;">
+    <div class="spinner"></div>
+    <div>AI正在计算匹配度...</div>
+  </div>
+
+  <!-- 匹配结果 -->
+  <div id="resultArea" style="display:none;">
+    <div class="card" style="background:linear-gradient(135deg,#EEF2FF,#E0E7FF);">
+      <div class="card-title" style="font-size:16px;">🎉 匹配完成！</div>
+      <p style="font-size:13px; color:var(--text-secondary);">
+        以下是根据你的生活习惯推荐的室友，按匹配度排序
+      </p>
+    </div>
+    <div id="resultList"></div>
+
+    <div style="padding:12px 16px; text-align:center;">
+      <button class="btn btn-outline" style="width:auto; padding:10px 24px;" onclick="resetQuestionnaire()">重新填写</button>
+    </div>
+  </div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-item" data-page="index" onclick="goTo('index.html')">
+    <span class="icon">🏠</span> 首页
+  </button>
+  <button class="tab-item" data-page="ai-parse" onclick="goTo('ai-parse.html')">
+    <span class="icon">🔍</span> 分析
+  </button>
+  <button class="tab-item active" data-page="roommate" onclick="goTo('roommate.html')">
+    <span class="icon">👥</span> 室友
+  </button>
+  <button class="tab-item" data-page="favorites" onclick="goTo('favorites.html')">
+    <span class="icon">❤️</span> 收藏
+  </button>
+</div>
+
+<script src="js/utils.js"></script>
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/api.js"></script>
+<script>
+const QUESTIONS = [
+  { id: 'zodiac', title: '你的作息习惯是？', options: [
+    { label: '早睡型（23:00前睡，7:00前起）', value: '早睡型' },
+    { label: '熬夜型（凌晨后睡，上午起）', value: '熬夜型' },
+    { label: '自由型（作息不固定）', value: '自由型' }
+  ]},
+  { id: 'hygiene', title: '你的卫生习惯是？', options: [
+    { label: '洁癖（眼里揉不得沙子）', value: '洁癖' },
+    { label: '一般（正常收拾就行）', value: '一般' },
+    { label: '随意（不太在意）', value: '随意' }
+  ]},
+  { id: 'personality', title: '你喜欢什么样的相处方式？', options: [
+    { label: '安静（各过各的，互不打扰）', value: '安静' },
+    { label: '健谈（喜欢聊天交流）', value: '健谈' },
+    { label: '都可（看情况）', value: '都可' }
+  ]},
+  { id: 'budget', title: '你的预算范围是？', options: [
+    { label: '800-1500元/月', value: '800-1500' },
+    { label: '1500-2500元/月', value: '1500-2500' },
+    { label: '2500元以上', value: '2500-4000' }
+  ]},
+  { id: 'pets', title: '你接受室友养宠物吗？', options: [
+    { label: '接受，我自己也养', value: 'true' },
+    { label: '接受，但我不养', value: 'false' },
+    { label: '不接受宠物', value: 'false' }
+  ]},
+  { id: 'gender', title: '你的性别？', options: [
+    { label: '男', value: '男' },
+    { label: '女', value: '女' }
+  ]},
+  { id: 'genderPrefer', title: '你对室友的性别要求是？', options: [
+    { label: '仅限同性', value: 'same' },
+    { label: '不限男女', value: '不限' }
+  ]}
+];
+
+// 存储答案
+const answers = {};
+
+function renderQuestionnaire() {
+  const container = document.getElementById('questionsContainer');
+  container.innerHTML = QUESTIONS.map((q, idx) => `
+    <div class="question-card">
+      <div class="q-title"><span class="q-number">${idx + 1}</span>${q.title}</div>
+      <div class="q-options">
+        ${q.options.map((opt, oi) => `
+          <label class="q-option" onclick="selectOption('${q.id}', '${opt.value}', this)">
+            <input type="radio" name="q_${q.id}" value="${opt.value}">
+            ${opt.label}
+          </label>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function selectOption(qId, value, el) {
+  // 取消同组其他选中
+  const parent = el.closest('.q-options');
+  parent.querySelectorAll('.q-option').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  el.querySelector('input[type="radio"]').checked = true;
+  answers[qId] = value;
+}
+
+function submitQuestionnaire() {
+  // 检查是否全部填写
+  const required = ['zodiac', 'hygiene', 'personality', 'budget', 'gender', 'genderPrefer'];
+  for (const key of required) {
+    if (!answers[key]) {
+      showToast('请先完成所有问题');
+      return;
+    }
+  }
+  // pets 默认 false
+  if (!answers.pets) answers.pets = 'false';
+
+  // 构建profile
+  const profile = {
+    userId: 'ME_' + Date.now(),
+    zodiac: answers.zodiac,
+    hygiene: answers.hygiene,
+    personality: answers.personality,
+    budget: answers.budget,
+    pets: answers.pets === 'true',
+    gender: answers.gender,
+    genderPrefer: answers.genderPrefer === 'same' ? answers.gender : '不限'
+  };
+
+  saveRoommateProfile(profile);
+
+  // 显示加载
+  document.getElementById('questionArea').style.display = 'none';
+  document.getElementById('loading').style.display = 'flex';
+
+  matchRoommates(profile).then(res => {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('resultArea').style.display = 'block';
+    renderResults(res.results);
+  });
+}
+
+function renderResults(users) {
+  const list = document.getElementById('resultList');
+  if (users.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">👥</div><div>暂无匹配室友，试试改一下你的条件</div></div>`;
+    return;
+  }
+
+  const confirmed = getConfirmations();
+
+  list.innerHTML = users.map(u => `
+    <div class="card">
+      <div class="match-card" style="border:none; padding:0 0 12px 0; margin-bottom:12px;">
+        <div class="match-avatar">${u.name[0]}</div>
+        <div class="match-info">
+          <div class="match-name">${u.name}</div>
+          <div class="match-detail">${u.school} · ${u.age}岁 · ${u.gender}</div>
+        </div>
+        <div class="match-score ${u.matchLevel}">${u.matchScore}%</div>
+      </div>
+      <div style="margin-bottom:8px;">
+        <span style="font-size:12px; font-weight:500; color:var(--text-secondary);">匹配详情：</span>
+        <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
+          ${u.matchDetails.map(d => {
+            const isGood = d.includes('一致') || d.includes('合拍') || d.includes('匹配') || d.includes('兼容');
+            return `<span class="house-tag" style="background:${isGood ? '#F0FDF4;color:#166534;' : '#FEF3C7;color:#92400E;'}">${d}</span>`;
+          }).join('')}
+        </div>
+      </div>
+      <div style="display:flex; gap:6px; font-size:12px; color:var(--text-secondary); margin-bottom:12px;">
+        <span>作息：${u.zodiac}</span>
+        <span>·</span>
+        <span>卫生：${u.hygiene}</span>
+        <span>·</span>
+        <span>性格：${u.personality}</span>
+        <span>·</span>
+        <span>预算：${u.budget}</span>
+      </div>
+      ${confirmed.includes(u.id)
+        ? '<div style="text-align:center; padding:6px; background:#F0FDF4; border-radius:6px; font-size:13px; color:#166534;">✅ 已发送匹配请求</div>'
+        : `<button class="btn btn-primary" onclick="sendRequest('${u.id}', this)">发送匹配请求</button>`
+      }
+    </div>
+  `).join('');
+}
+
+function sendRequest(userId, btn) {
+  confirmMatch(userId);
+  btn.disabled = true;
+  btn.textContent = '✅ 已发送匹配请求';
+  btn.className = 'btn btn-success';
+  showToast('匹配请求已发送！对方确认后即可查看联系方式');
+}
+
+function resetQuestionnaire() {
+  for (const key in answers) delete answers[key];
+  document.getElementById('questionArea').style.display = 'block';
+  document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('loading').style.display = 'none';
+  renderQuestionnaire();
+}
+
+renderQuestionnaire();
+</script>
+</body>
+</html>
