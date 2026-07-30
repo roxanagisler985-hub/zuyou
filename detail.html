@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>房源详情 - 宿友</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="page-header">
+  <button class="back-btn" onclick="goBack()">←</button>
+  <span style="font-size:16px; font-weight:600;">🏠 房源详情</span>
+</div>
+
+<div class="content" id="detailContent">
+  <div class="loading"><div class="spinner"></div><div>加载中...</div></div>
+</div>
+
+<script src="js/utils.js"></script>
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="data/houses.json" id="housesData"></script>
+<script>
+let HOUSES_DATA = [];
+
+fetch('data/houses.json')
+  .then(r => r.json())
+  .then(data => {
+    HOUSES_DATA = data;
+    loadDetail();
+  });
+
+function getQueryParam(name) {
+  const url = new URL(window.location.href);
+  return url.searchParams.get(name);
+}
+
+function loadDetail() {
+  const id = getQueryParam('id');
+  const house = HOUSES_DATA.find(h => h.id === id);
+  if (!house) {
+    document.getElementById('detailContent').innerHTML = `
+      <div class="empty-state"><div class="icon">😅</div><div>房源不存在</div></div>`;
+    return;
+  }
+
+  // 先显示基本信息
+  const detailEl = document.getElementById('detailContent');
+  detailEl.innerHTML = `
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:start;">
+        <div class="house-title" style="font-size:18px;">${house.title}</div>
+        <button class="fav-btn ${isFavorited(house.id) ? 'active' : 'inactive'}"
+          onclick="toggleDetailFav('${house.id}', this)">
+          ${isFavorited(house.id) ? '❤️' : '🤍'}
+        </button>
+      </div>
+      <div class="house-price">${formatPrice(house.price)}<span class="unit"> /月</span></div>
+      <div style="display:flex; gap:12px; font-size:13px; color:var(--text-secondary); margin:8px 0;">
+        <span>📍 ${house.location}</span>
+        <span>📐 ${house.area}m²</span>
+        <span>🏢 ${house.floor}</span>
+      </div>
+      <div class="house-tags">
+        ${house.tags.map(t => `<span class="house-tag">${t}</span>`).join('')}
+        ${house.landlord.includes('个人') ? '<span class="house-tag" style="background:#F0FDF4;color:#166534;">个人房东</span>' : ''}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📝 房源描述</div>
+      <p style="font-size:13px; color:var(--text-secondary); line-height:1.8;">${house.description}</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📋 房源信息</div>
+      <table style="width:100%; font-size:13px; border-collapse:collapse;">
+        <tr><td style="padding:6px 0; color:var(--text-secondary);">房东</td><td style="padding:6px 0;">${house.landlord}</td></tr>
+        <tr><td style="padding:6px 0; color:var(--text-secondary);">房型</td><td style="padding:6px 0;">${house.roomType}</td></tr>
+        <tr><td style="padding:6px 0; color:var(--text-secondary);">面积</td><td style="padding:6px 0;">${house.area}m²</td></tr>
+        <tr><td style="padding:6px 0; color:var(--text-secondary);">楼层</td><td style="padding:6px 0;">${house.floor}</td></tr>
+        <tr><td style="padding:6px 0; color:var(--text-secondary);">朝向</td><td style="padding:6px 0;">${house.orientation}</td></tr>
+        <tr><td style="padding:6px 0; color:var(--text-secondary);">付款方式</td><td style="padding:6px 0;">${house.deposit}</td></tr>
+        <tr><td style="padding:6px 0; color:var(--text-secondary);">来源</td><td style="padding:6px 0;">${house.source}</td></tr>
+        <tr><td style="padding:6px 0; color:var(--text-secondary);">评分</td><td style="padding:6px 0;">⭐ ${house.rating}</td></tr>
+      </table>
+    </div>
+
+    <div id="analysisSection">
+      <div class="card" style="text-align:center;">
+        <div style="font-size:28px; margin-bottom:8px;">🤖</div>
+        <div style="font-size:14px; font-weight:600; margin-bottom:4px;">AI房源分析</div>
+        <div style="font-size:12px; color:var(--text-secondary); margin-bottom:12px;">一键识别风险，帮你做决定</div>
+        <button class="btn btn-primary" id="aiBtn" onclick="runAnalysis('${house.id}')">开始分析</button>
+      </div>
+    </div>
+  `;
+}
+
+function toggleDetailFav(id, btn) {
+  const added = toggleFavorite(id);
+  btn.className = 'fav-btn ' + (added ? 'active' : 'inactive');
+  btn.textContent = added ? '❤️' : '🤍';
+  showToast(added ? '已收藏' : '已取消收藏');
+}
+
+function runAnalysis(houseId) {
+  const btn = document.getElementById('aiBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 分析中...';
+
+  const section = document.getElementById('analysisSection');
+  section.innerHTML = `
+    <div class="card">
+      <div class="loading"><div class="spinner"></div><div>AI正在分析该房源...</div></div>
+    </div>`;
+
+  getHouseAnalysis(houseId).then(({ house, analysis }) => {
+    if (!analysis) {
+      showToast('分析失败，请重试');
+      return;
+    }
+
+    let scoreColor = analysis.score >= 75 ? '#22C55E' : analysis.score >= 50 ? '#F59E0B' : '#EF4444';
+
+    let html = `
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <span style="font-size:15px; font-weight:600;">📊 AI综合评估</span>
+          <span style="font-size:24px; font-weight:700; color:${scoreColor};">${analysis.score}<span style="font-size:14px;">分</span></span>
+        </div>
+        <div style="text-align:center; margin-bottom:12px;">
+          <span style="font-size:16px; font-weight:600;">${analysis.recommendation}</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:${analysis.score}%; background:${scoreColor};"></div>
+        </div>
+        <p style="font-size:13px; color:var(--text-secondary); margin-top:8px;">${analysis.aiSummary}</p>
+      </div>`;
+
+    if (analysis.risks && analysis.risks.length > 0) {
+      html += `
+        <div class="card">
+          <div class="result-card result-danger">
+            <div class="result-title">⚠️ 风险提示（${analysis.risks.length}项）</div>
+            ${analysis.risks.map(r => `<div class="result-item">${r.content}</div>`).join('')}
+          </div>
+        </div>`;
+    } else {
+      html += `
+        <div class="card">
+          <div class="result-card result-safe">
+            <div class="result-title">✅ 未发现明显风险</div>
+          </div>
+        </div>`;
+    }
+
+    if (analysis.safeSignals && analysis.safeSignals.length > 0) {
+      html += `
+        <div class="card">
+          <div class="result-card result-safe">
+            <div class="result-title">✅ 靠谱信号（${analysis.safeSignals.length}项）</div>
+            ${analysis.safeSignals.map(s => `<div class="result-item">${s.content}</div>`).join('')}
+          </div>
+        </div>`;
+    }
+
+    section.innerHTML = html;
+    section.scrollIntoView({ behavior: 'smooth' });
+  });
+}
+</script>
+</body>
+</html>
