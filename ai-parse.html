@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AI房源分析 - 宿友</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="page-header">
+  <button class="back-btn" onclick="goBack()">←</button>
+  <span style="font-size:16px; font-weight:600;">🔍 AI房源分析</span>
+</div>
+
+<div class="content">
+  <!-- 输入区 -->
+  <div class="card">
+    <div class="card-title">📝 粘贴房源信息</div>
+    <div class="form-group">
+      <label class="form-label">房源标题或描述</label>
+      <textarea class="form-textarea" id="houseDesc" placeholder="粘贴房源链接或描述文字，例如：&#10;体育西路精装修单间，押一付三，1500元/月，拎包入住..."></textarea>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-primary" id="analyzeBtn" onclick="startAnalysis()">🤖 AI分析</button>
+      <button class="btn btn-outline btn-sm" style="width:auto; padding:10px 16px;" onclick="loadDemo()">试试样例</button>
+    </div>
+  </div>
+
+  <!-- 加载状态 -->
+  <div id="loading" class="loading" style="display:none;">
+    <div class="spinner"></div>
+    <div>AI正在分析房源信息...</div>
+  </div>
+
+  <!-- 分析结果 -->
+  <div id="resultArea" style="display:none;"></div>
+
+  <!-- 智能建议 -->
+  <div class="card" style="background:linear-gradient(135deg,#EEF2FF,#E0E7FF);">
+    <div class="card-title">💡 使用提示</div>
+    <div style="font-size:13px; color:var(--text-secondary); line-height:1.8;">
+      1. 粘贴完整房源描述，信息越详细分析越准确
+      <br>2. 支持贝壳、58、闲鱼、小红书等平台
+      <br>3. AI会自动识别风险信号和靠谱信号
+      <br>4. 分析结果仅供参考，建议实地看房签约
+    </div>
+  </div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-item" data-page="index" onclick="goTo('index.html')">
+    <span class="icon">🏠</span> 首页
+  </button>
+  <button class="tab-item active" data-page="ai-parse" onclick="goTo('ai-parse.html')">
+    <span class="icon">🔍</span> 分析
+  </button>
+  <button class="tab-item" data-page="roommate" onclick="goTo('roommate.html')">
+    <span class="icon">👥</span> 室友
+  </button>
+  <button class="tab-item" data-page="favorites" onclick="goTo('favorites.html')">
+    <span class="icon">❤️</span> 收藏
+  </button>
+</div>
+
+<script src="js/utils.js"></script>
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="data/houses.json" id="housesData"></script>
+<script>
+// 加载房源数据
+let HOUSES_DATA = [];
+fetch('data/houses.json').then(r => r.json()).then(d => { HOUSES_DATA = d; });
+
+function startAnalysis() {
+  const desc = document.getElementById('houseDesc').value.trim();
+  if (!desc) {
+    showToast('请先输入房源描述');
+    return;
+  }
+
+  // 显示加载
+  document.getElementById('loading').style.display = 'flex';
+  document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('analyzeBtn').disabled = true;
+
+  // 调用AI分析
+  analyzeCustomText(desc).then(result => {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('analyzeBtn').disabled = false;
+    showResult(result);
+  });
+}
+
+function loadDemo() {
+  document.getElementById('houseDesc').value = '体育西路地铁口附近，精装修单间出租，押一付三，1500元/月。家具家电齐全，拎包入住。周边商业配套齐全，生活便利。';
+  startAnalysis();
+}
+
+function showResult(result) {
+  const area = document.getElementById('resultArea');
+  area.style.display = 'block';
+
+  // 综合评分
+  let scoreColor = result.score >= 75 ? '#22C55E' : result.score >= 50 ? '#F59E0B' : '#EF4444';
+
+  let html = `
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <span style="font-size:15px; font-weight:600;">📊 AI综合评估</span>
+        <span style="font-size:24px; font-weight:700; color:${scoreColor};">${result.score}<span style="font-size:14px;">分</span></span>
+      </div>
+      <div style="text-align:center; margin-bottom:12px;">
+        <span style="font-size:16px; font-weight:600;">${result.recommendation}</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:${result.score}%; background:${scoreColor};"></div>
+      </div>
+      <p style="font-size:13px; color:var(--text-secondary); margin-top:8px;">${result.aiSummary}</p>
+    </div>
+  `;
+
+  // 风险提示
+  if (result.risks && result.risks.length > 0) {
+    html += `
+      <div class="card">
+        <div class="result-card result-danger">
+          <div class="result-title">⚠️ 风险提示（${result.risks.length}项）</div>
+          ${result.risks.map(r => `<div class="result-item">${r.content}</div>`).join('')}
+        </div>
+      </div>`;
+  } else {
+    html += `
+      <div class="card">
+        <div class="result-card result-safe">
+          <div class="result-title">✅ 未发现明显风险</div>
+          <div class="result-item">该房源描述中未检测到常见的风险信号，但仍建议实地确认。</div>
+        </div>
+      </div>`;
+  }
+
+  // 靠谱信号
+  if (result.safeSignals && result.safeSignals.length > 0) {
+    html += `
+      <div class="card">
+        <div class="result-card result-safe">
+          <div class="result-title">✅ 靠谱信号（${result.safeSignals.length}项）</div>
+          ${result.safeSignals.map(s => `<div class="result-item">${s.content}</div>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  // 行动建议
+  html += `
+    <div class="card">
+      <div class="card-title">📋 行动建议</div>
+      <div style="font-size:13px; color:var(--text-secondary); line-height:2;">
+        ${result.score >= 75 ? '🟢 建议联系房东实地看房，核对信息是否与描述一致' : ''}
+        ${result.score >= 50 && result.score < 75 ? '🟡 建议先核实风险项，再决定是否实地看房' : ''}
+        ${result.score < 50 ? '🔴 建议谨慎对待，优先考虑其他更靠谱的房源' : ''}
+        <br>📌 签约前务必查看租赁合同，注意退租条款和维修责任
+      </div>
+    </div>
+
+    <div style="text-align:center; padding:12px;">
+      <button class="btn btn-outline" style="width:auto; padding:10px 24px;" onclick="document.getElementById('houseDesc').value=''; document.getElementById('resultArea').style.display='none';">分析下一个</button>
+    </div>
+  `;
+
+  area.innerHTML = html;
+  area.scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
